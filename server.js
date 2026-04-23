@@ -238,14 +238,17 @@ Respond in the same language the user speaks.`;
       console.log(`[gemini-tts] Sent ${pcm16.length} bytes (${chunks.length} chunks) to Ojin`);
 
       // Wait for Ojin to start processing, then stream audio to browser in sync
+      // Pace audio to browser at real-time rate (400ms per chunk)
+      await new Promise(r => setTimeout(r, 200));
       clientWs.send(JSON.stringify({ type: 'speech_start' }));
-      for (const chunk of chunks) {
+      for (let j = 0; j < chunks.length; j++) {
         if (clientWs.readyState === WebSocket.OPEN) {
-          const audioMsg = Buffer.alloc(1 + chunk.length);
+          const audioMsg = Buffer.alloc(1 + chunks[j].length);
           audioMsg.writeUInt8(0xAA, 0);
-          chunk.copy(audioMsg, 1);
+          chunks[j].copy(audioMsg, 1);
           clientWs.send(audioMsg);
         }
+        if (j < chunks.length - 1) await new Promise(r => setTimeout(r, 400));
       }
       clientWs.send(JSON.stringify({ type: 'speech_end' }));
     } catch (err) {
