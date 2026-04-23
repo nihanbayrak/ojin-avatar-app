@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Avatar — Ojin × Gemini × ElevenLabs</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f5f4f1;
+      --surface: #ffffff;
+      --surface2: #edecea;
+      --border: #d8d5cf;
+      --text: #1a1917;
+      --muted: #7c7a72;
+      --accent: #2d6a4f;
+      --accent-dim: rgba(45,106,79,0.1);
+      --accent-glow: rgba(45,106,79,0.18);
+      --green: #2d6a4f;
+      --red: #c1292e;
+      --amber: #b5850b;
+      --radius: 14px;
+    }
+
+    * { margin:0; padding:0; box-sizing:border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Layout ── */
+    .app {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 1.5rem;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-height: 100vh;
+      gap: 1.25rem;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.95rem;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .logo .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: all 0.4s;
+    }
+
+    .logo .dot.live { background: var(--green); box-shadow: 0 0 8px var(--green); }
+    .logo .dot.connecting { background: var(--amber); animation: blink 1s infinite; }
+    .logo .dot.error { background: var(--red); }
+
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+    .status-label {
+      font-size: 0.7rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--muted);
+      padding: 0.3rem 0.7rem;
+      border: 1px solid var(--border);
+      border-radius: 100px;
+    }
+
+    /* ── Main area ── */
+    .main {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.25rem;
+    }
+
+    /* ── Video ── */
+    .video-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16/9;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .video-wrap canvas {
+      width: 100%; height: 100%;
+      object-fit: contain;
+      display: none;
+    }
+
+    .video-placeholder {
+      position: absolute; inset:0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      color: var(--muted);
+      gap: 0.5rem;
+      font-size: 0.8rem;
+    }
+
+    .video-placeholder svg { width:40px; height:40px; opacity:0.25; }
+
+    .video-overlay {
+      position: absolute;
+      bottom: 12px; left: 12px; right: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      pointer-events: none;
+    }
+
+    .frame-info {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.6rem;
+      color: rgba(255,255,255,0.5);
+      background: rgba(0,0,0,0.55);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+    }
+
+    .thinking-indicator {
+      display: none;
+      align-items: center; gap: 0.4rem;
+      font-size: 0.7rem;
+      color: var(--accent);
+      background: rgba(0,0,0,0.55);
+      padding: 0.3rem 0.6rem;
+      border-radius: 6px;
+    }
+
+    .thinking-indicator.show { display: flex; }
+
+    .thinking-dots span {
+      display: inline-block;
+      width: 4px; height: 4px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: dotPulse 1.2s infinite;
+    }
+
+    .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes dotPulse {
+      0%,60%,100% { opacity: 0.3; transform: scale(0.8); }
+      30% { opacity: 1; transform: scale(1.2); }
+    }
+
+    /* ── Chat messages ── */
+    .chat-area {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem;
+      max-height: 220px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .msg {
+      max-width: 85%;
+      padding: 0.6rem 0.85rem;
+      border-radius: 12px;
+      font-size: 0.85rem;
+      line-height: 1.45;
+      animation: msgIn 0.25s ease-out;
+    }
+
+    @keyframes msgIn {
+      from { opacity:0; transform: translateY(6px); }
+      to { opacity:1; transform: translateY(0); }
+    }
+
+    .msg.user {
+      align-self: flex-end;
+      background: var(--accent);
+      color: #fafaf8;
+      border-bottom-right-radius: 4px;
+    }
+
+    .msg.assistant {
+      align-self: flex-start;
+      background: var(--surface2);
+      color: var(--text);
+      border-bottom-left-radius: 4px;
+    }
+
+    .msg.system {
+      align-self: center;
+      background: transparent;
+      color: var(--muted);
+      font-size: 0.7rem;
+      font-family: 'JetBrains Mono', monospace;
+      padding: 0.3rem;
+    }
+
+    /* ── Input area ── */
+    .input-area {
+      display: flex;
+      gap: 0.75rem;
+      align-items: stretch;
+    }
+
+    .text-input {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.9rem;
+      padding: 0.75rem 1rem;
+      border-radius: var(--radius);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .text-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+    .text-input::placeholder { color: var(--muted); }
+    .text-input:disabled { opacity: 0.4; }
+
+    .btn {
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 600;
+      font-size: 0.85rem;
+      border: none;
+      border-radius: var(--radius);
+      padding: 0 1.25rem;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      white-space: nowrap;
+    }
+
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    .btn-send {
+      background: var(--accent);
+      color: #fafaf8;
+    }
+    .btn-send:hover:not(:disabled) { background: #245a42; }
+
+    .btn-mic {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 0 0.9rem;
+    }
+    .btn-mic:hover:not(:disabled) { border-color: var(--muted); }
+    .btn-mic.recording {
+      background: rgba(193,41,46,0.1);
+      border-color: var(--red);
+      color: var(--red);
+    }
+
+    .btn-connect {
+      background: var(--green);
+      color: #fafaf8;
+      width: 100%;
+      justify-content: center;
+      padding: 0.85rem;
+      font-size: 0.9rem;
+      margin-bottom: 0.5rem;
+    }
+    .btn-connect:hover:not(:disabled) { filter: brightness(1.1); }
+    .btn-connect.connected { background: var(--red); }
+
+    /* ── Footer ── */
+    .footer-info {
+      text-align: center;
+      font-size: 0.65rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--muted);
+      opacity: 0.5;
+      padding: 0.5rem;
+    }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+<div class="app">
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">
+      <div class="dot" id="statusDot"></div>
+      <span>ojin avatar agent</span>
+    </div>
+    <div class="status-label" id="statusLabel">offline</div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+    <!-- Connect button -->
+    <button class="btn btn-connect" id="connectBtn" onclick="toggleConnection()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      Connect Avatar
+    </button>
+
+    <!-- Video -->
+    <div class="video-wrap">
+      <canvas id="videoCanvas" width="1280" height="720"></canvas>
+      <div class="video-placeholder" id="placeholder">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.118a7.5 7.5 0 0 1 15 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.5-1.632Z"/>
+        </svg>
+        <span>Avatar will appear here</span>
+      </div>
+      <div class="video-overlay">
+        <div class="frame-info" id="frameInfo" style="display:none">0 frames</div>
+        <div class="thinking-indicator" id="thinkingIndicator">
+          <div class="thinking-dots"><span></span><span></span><span></span></div>
+          thinking...
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat -->
+    <div class="chat-area" id="chatArea">
+      <div class="msg system">Send a message or use your microphone to talk</div>
+    </div>
+  </div>
+
+  <!-- Input -->
+  <div>
+    <div class="input-area">
+      <button class="btn btn-mic" id="micBtn" onclick="toggleMic()" disabled title="Hold to speak">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="22"/>
+        </svg>
+      </button>
+      <input type="text" class="text-input" id="textInput" placeholder="Type a message..."
+             onkeydown="if(event.key==='Enter' && !event.shiftKey) sendMessage()" disabled />
+      <button class="btn btn-send" id="sendBtn" onclick="sendMessage()" disabled>
+        Send
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
+    </div>
+    <div class="footer-info">gemini 2.0 flash · elevenlabs tts · ojin flashhead-lite · web speech api stt</div>
+  </div>
+</div>
+
+<script>
+// ── State ──
+let ws = null;
+let connected = false;
+let ojinFailed = false;
+let frameCount = 0;
+let frameBuffer = [];
+const TARGET_BUFFER = 5;
+let skipCounter = 0;
+let playbackInterval = null;
+let isRecording = false;
+let recognition = null;
+let audioCtx = null;
+let ttsAudioQueue = [];
+let ttsPlaying = false;
+let speechFrameReceived = false;
+
+// ── DOM ──
+const canvas = document.getElementById('videoCanvas');
+const ctx = canvas.getContext('2d');
+
+// ── Helpers ──
+function setStatus(state, label) {
+  document.getElementById('statusDot').className = `dot ${state}`;
+  document.getElementById('statusLabel').textContent = label;
+}
+
+function addMessage(text, role) {
+  const area = document.getElementById('chatArea');
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  div.textContent = text;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+function showThinking(show) {
+  document.getElementById('thinkingIndicator').classList.toggle('show', show);
+}
+
+// ── Parse Ojin binary frame ──
+function parseOjinFrame(buffer) {
+  const view = new DataView(buffer);
+  let offset = 0;
+
+  const isFinal = view.getUint8(offset); offset += 1;
+  offset += 16; // UUID
+  offset += 8;  // timestamp
+  const usage = view.getUint32(offset); offset += 4;
+  const index = view.getUint32(offset); offset += 4;
+  const numPayloads = view.getUint32(offset); offset += 4;
+
+  let image = null, audio = null;
+
+  for (let i = 0; i < numPayloads; i++) {
+    const dataSize = view.getUint32(offset); offset += 4;
+    const ptype = view.getUint8(offset); offset += 1;
+    const payload = buffer.slice(offset, offset + dataSize);
+    offset += dataSize;
+
+    if (ptype === 2) image = payload;
+    else if (ptype === 1) audio = payload;
+  }
+
+  return { isFinal, index, image, audio };
+}
+
+// ── Render JPEG ──
+function renderFrame(jpegBuf) {
+  const blob = new Blob([jpegBuf], { type: 'image/jpeg' });
+  const url = URL.createObjectURL(blob);
+  const img = new Image();
+  img.onload = () => {
+    if (canvas.width !== img.width) canvas.width = img.width;
+    if (canvas.height !== img.height) canvas.height = img.height;
+    ctx.drawImage(img, 0, 0);
+    URL.revokeObjectURL(url);
+  };
+  img.src = url;
+}
+
+// ── Playback at 25fps ──
+function startPlayback() {
+  if (playbackInterval) return;
+  playbackInterval = setInterval(() => {
+    if (frameBuffer.length === 0) return;
+
+    const frame = frameBuffer.shift();
+
+    // Drop excess silence frames
+    if (frameBuffer.length > TARGET_BUFFER && frame.index === 0) {
+      skipCounter++;
+      if (skipCounter % 2 === 0 && frameBuffer.length > 0) {
+        frameBuffer.shift();
+      }
+    }
+
+    if (frame.image) renderFrame(frame.image);
+
+    // Detect first speech frame for audio sync
+    if (frame.index === 1 && !speechFrameReceived) {
+      speechFrameReceived = true;
+      startTtsPlayback();
+    }
+    if (frame.index === 0 && speechFrameReceived) {
+      speechFrameReceived = false;
+    }
+
+    const info = document.getElementById('frameInfo');
+    info.style.display = 'block';
+    info.textContent = `buf:${frameBuffer.length} | ${frameCount}f`;
+  }, 40);
+}
+
+function stopPlayback() {
+  if (playbackInterval) { clearInterval(playbackInterval); playbackInterval = null; }
+}
+
+// ── TTS audio playback (PCM 16kHz → Web Audio) ──
+function initAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+}
+
+function queueTtsAudio(pcmBuffer) {
+  initAudio();
+  const int16 = new Int16Array(pcmBuffer);
+  const float32 = new Float32Array(int16.length);
+  for (let i = 0; i < int16.length; i++) {
+    float32[i] = int16[i] / 32768;
+  }
+  ttsAudioQueue.push(float32);
+  startTtsPlayback();
+}
+
+let nextPlayTime = 0;
+
+function startTtsPlayback() {
+  if (ttsPlaying) return;
+  ttsPlaying = true;
+  nextPlayTime = audioCtx.currentTime;
+  drainAudioQueue();
+}
+
+function drainAudioQueue() {
+  if (!ttsPlaying) return;
+
+  while (ttsAudioQueue.length > 0) {
+    const samples = ttsAudioQueue.shift();
+    const audioBuffer = audioCtx.createBuffer(1, samples.length, 16000);
+    audioBuffer.getChannelData(0).set(samples);
+
+    const source = audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(audioCtx.destination);
+
+    if (nextPlayTime < audioCtx.currentTime) {
+      nextPlayTime = audioCtx.currentTime;
+    }
+    source.start(nextPlayTime);
+    nextPlayTime += audioBuffer.duration;
+  }
+
+  // Keep draining
+  requestAnimationFrame(drainAudioQueue);
+}
+
+function stopTtsPlayback() {
+  ttsPlaying = false;
+  ttsAudioQueue = [];
+}
+
+// ── WebSocket ──
+function toggleConnection() {
+  if (connected) disconnect();
+  else connect();
+}
+
+function connect() {
+  setStatus('connecting', 'connecting...');
+  const btn = document.getElementById('connectBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg> Connecting...';
+
+  const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${protocol}://${location.host}/ws`);
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen = () => {
+    // Tell backend to connect to Ojin
+    ws.send(JSON.stringify({ type: 'connect_ojin' }));
+  };
+
+  ws.onmessage = (event) => {
+    if (typeof event.data === 'string') {
+      const msg = JSON.parse(event.data);
+
+      switch (msg.type) {
+        case 'ojin_ready':
+          connected = true;
+          setStatus('live', 'live');
+          btn.disabled = false;
+          btn.className = 'btn btn-connect connected';
+          btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"/></svg> Disconnect';
+          document.getElementById('textInput').disabled = false;
+          document.getElementById('sendBtn').disabled = false;
+          document.getElementById('micBtn').disabled = false;
+          document.getElementById('placeholder').style.display = 'none';
+          canvas.style.display = 'block';
+          addMessage('Avatar connected. Start talking!', 'system');
+          startPlayback();
+          break;
+
+        case 'assistant_text':
+          showThinking(false);
+          addMessage(msg.text, 'assistant');
+          break;
+
+        case 'thinking':
+          showThinking(true);
+          break;
+
+        case 'speech_start':
+          speechFrameReceived = false;
+          initAudio();
+          stopTtsPlayback();
+          break;
+
+        case 'speech_end':
+          break;
+
+        case 'ojin_failed':
+          connected = true;
+          ojinFailed = true;
+          setStatus('live', 'live (no avatar)');
+          btn.disabled = false;
+          btn.className = 'btn btn-connect connected';
+          btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"/></svg> Disconnect';
+          document.getElementById('textInput').disabled = false;
+          document.getElementById('sendBtn').disabled = false;
+          document.getElementById('micBtn').disabled = false;
+          addMessage(`Avatar unavailable: ${msg.message}`, 'system');
+          addMessage('Chat still works — using browser speech.', 'system');
+          break;
+
+        case 'tts_fallback':
+          if (msg.text && 'speechSynthesis' in window) {
+            const utter = new SpeechSynthesisUtterance(msg.text);
+            utter.rate = 1.05;
+            speechSynthesis.speak(utter);
+          }
+          break;
+
+        case 'error':
+          addMessage(`Error: ${msg.message}`, 'system');
+          showThinking(false);
+          break;
+      }
+    } else {
+      // Binary data — could be Ojin frame or TTS audio
+      const buf = event.data;
+      const view = new DataView(buf);
+      const marker = view.getUint8(0);
+
+      if (marker === 0xAA) {
+        // TTS audio chunk (our custom marker)
+        const pcm = buf.slice(1);
+        queueTtsAudio(pcm);
+      } else {
+        // Ojin video frame
+        frameCount++;
+        try {
+          const frame = parseOjinFrame(buf);
+          frameBuffer.push(frame);
+        } catch (e) {
+          // Skip malformed frames
+        }
+      }
+    }
+  };
+
+  ws.onerror = () => {
+    setStatus('error', 'error');
+    addMessage('Connection error', 'system');
+    resetUI();
+  };
+
+  ws.onclose = () => {
+    setStatus('', 'offline');
+    if (connected) addMessage('Disconnected', 'system');
+    connected = false;
+    resetUI();
+  };
+}
+
+function disconnect() {
+  if (ws) ws.close();
+  connected = false;
+  stopPlayback();
+  stopTtsPlayback();
+  resetUI();
+}
+
+function resetUI() {
+  const btn = document.getElementById('connectBtn');
+  btn.disabled = false;
+  btn.className = 'btn btn-connect';
+  btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Connect Avatar';
+  document.getElementById('textInput').disabled = true;
+  document.getElementById('sendBtn').disabled = true;
+  document.getElementById('micBtn').disabled = true;
+  document.getElementById('placeholder').style.display = '';
+  canvas.style.display = 'none';
+  frameBuffer = [];
+  frameCount = 0;
+  ojinFailed = false;
+  stopPlayback();
+}
+
+// ── Send text message ──
+function sendMessage() {
+  const input = document.getElementById('textInput');
+  const text = input.value.trim();
+  if (!text || !ws || !connected) return;
+
+  addMessage(text, 'user');
+  ws.send(JSON.stringify({ type: 'chat', text }));
+  input.value = '';
+  input.focus();
+}
+
+// ── Microphone (Web Speech API for STT) ──
+function toggleMic() {
+  if (isRecording) stopRecording();
+  else startRecording();
+}
+
+function startRecording() {
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    addMessage('Speech recognition not supported in this browser. Use Chrome.', 'system');
+    return;
+  }
+
+  initAudio();
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SpeechRecognition();
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.lang = ''; // auto-detect
+
+  recognition.onstart = () => {
+    isRecording = true;
+    document.getElementById('micBtn').classList.add('recording');
+  };
+
+  recognition.onresult = (event) => {
+    let transcript = '';
+    let isFinal = false;
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      transcript += event.results[i][0].transcript;
+      if (event.results[i].isFinal) isFinal = true;
+    }
+
+    if (isFinal && transcript.trim()) {
+      addMessage(transcript.trim(), 'user');
+      ws.send(JSON.stringify({ type: 'chat', text: transcript.trim() }));
+    }
+  };
+
+  recognition.onerror = (event) => {
+    if (event.error !== 'no-speech') {
+      addMessage(`Mic error: ${event.error}`, 'system');
+    }
+    stopRecording();
+  };
+
+  recognition.onend = () => {
+    stopRecording();
+  };
+
+  recognition.start();
+}
+
+function stopRecording() {
+  isRecording = false;
+  document.getElementById('micBtn').classList.remove('recording');
+  if (recognition) {
+    try { recognition.stop(); } catch(e) {}
+    recognition = null;
+  }
+}
+</script>
+
+</body>
+</html>
