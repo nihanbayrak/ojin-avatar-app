@@ -1,6 +1,6 @@
 # Ojin Avatar Agent
 
-A real-time conversational AI avatar that understands speech/text and responds with a lip-synced talking head.
+A prototype talking avatar that runs locally. You speak or type in the browser. Gemini 2.5 Flash writes the reply, ElevenLabs turns it into audio, and Ojin Flashhead-lite turns that audio into lip-synced video frames, which stream back over a WebSocket. One reply takes about 2 to 4 seconds. If ElevenLabs is unavailable, the browser's own text-to-speech is used. It needs your own Ojin, Gemini and ElevenLabs keys.
 
 ## Pipeline
 
